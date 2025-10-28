@@ -10,6 +10,20 @@ import ffmpeg
 from openai import OpenAI
 
 
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+stream_handler = logging.StreamHandler(sys.stdout)
+log_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+stream_handler.setFormatter(log_formatter)
+logger.addHandler(stream_handler)
+
+
+
 def extract_audio_from_video(video_path: str, output_audio_path: str = None) -> str:
     """
     Extract audio from video file and save as MP3.
@@ -21,19 +35,25 @@ def extract_audio_from_video(video_path: str, output_audio_path: str = None) -> 
     Returns:
         Path to the extracted audio file
     """
+    logger.info(f"Starting audio extraction from video: {video_path}")
+    
     if output_audio_path is None:
         # Create a temporary file for the audio
         temp_dir = tempfile.gettempdir()
         output_audio_path = os.path.join(temp_dir, f"{Path(video_path).stem}_audio.mp3")
+        logger.debug(f"No output path provided, using temp file: {output_audio_path}")
     
     try:
         # Extract audio using ffmpeg
+        logger.info("Running ffmpeg to extract audio...")
         stream = ffmpeg.input(video_path)
         stream = ffmpeg.output(stream, output_audio_path, acodec='libmp3lame', audio_bitrate='192k')
         ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
         
+        logger.info(f"Audio extraction completed successfully: {output_audio_path}")
         return output_audio_path
     except ffmpeg.Error as e:
+        logger.error(f"FFmpeg error during audio extraction: {e.stderr.decode()}")
         raise RuntimeError(f"Error extracting audio: {e.stderr.decode()}") from e
 
 
@@ -55,10 +75,14 @@ def transcribe_audio_with_whisper(
     Returns:
         Tuple of (transcript_text, transcript_file_path)
     """
+    logger.info(f"Starting transcription of audio file: {audio_path}")
+    logger.info(f"Transcription language: {language}")
+    
     client = OpenAI(api_key=openai_api_key)
     
     try:
         # Open the audio file and send to Whisper API
+        logger.info("Sending audio to OpenAI Whisper API...")
         with open(audio_path, "rb") as audio_file:
             transcript_response = client.audio.transcriptions.create(
                 model="whisper-1",
@@ -68,6 +92,8 @@ def transcribe_audio_with_whisper(
             )
         
         transcript_text = transcript_response
+        logger.info(f"Transcription received ({len(transcript_text)} characters)")
+        logger.debug(f"Transcript preview: {transcript_text[:100]}...")
         
         # Save transcript to file
         if output_transcript_path is None:
@@ -80,9 +106,11 @@ def transcribe_audio_with_whisper(
         with open(output_transcript_path, "w", encoding="utf-8") as f:
             f.write(transcript_text)
         
+        logger.info(f"Transcript saved to: {output_transcript_path}")
         return transcript_text, output_transcript_path
     
     except Exception as e:
+        logger.error(f"Error during transcription: {str(e)}")
         raise RuntimeError(f"Error transcribing audio: {str(e)}") from e
 
 
@@ -108,6 +136,10 @@ def translate_text_with_gpt(
     Returns:
         Tuple of (translated_text, translation_file_path)
     """
+    logger.info(f"Starting translation: {source_language} -> {target_language}")
+    logger.info(f"Using model: {model}")
+    logger.info(f"Text length: {len(text)} characters")
+    
     client = OpenAI(api_key=openai_api_key)
     
     try:
@@ -119,6 +151,7 @@ def translate_text_with_gpt(
         )
         
         # Call GPT API for translation
+        logger.info("Sending translation request to OpenAI GPT...")
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -129,6 +162,8 @@ def translate_text_with_gpt(
         )
         
         translated_text = response.choices[0].message.content.strip()
+        logger.info(f"Translation received ({len(translated_text)} characters)")
+        logger.debug(f"Translation preview: {translated_text[:100]}...")
         
         # Save translation to file
         if output_translation_path is None:
@@ -141,9 +176,11 @@ def translate_text_with_gpt(
         with open(output_translation_path, "w", encoding="utf-8") as f:
             f.write(translated_text)
         
+        logger.info(f"Translation saved to: {output_translation_path}")
         return translated_text, output_translation_path
     
     except Exception as e:
+        logger.error(f"Error during translation: {str(e)}")
         raise RuntimeError(f"Error translating text: {str(e)}") from e
 
 
@@ -152,23 +189,27 @@ def create_voice_clone_elevenlabs(
     reference_audio_path: str,
     elevenlabs_api_key: str,
     description: str = "Cloned voice for video translation",
-    max_retries: int = 3,
-    retry_delay: float = 1.0
-) -> str:
+    timeout: int = 90
+) -> Optional[str]:
     """
-    Create a voice clone in ElevenLabs using reference audio.
+    Create a voice clone in ElevenLabs using reference audio (synchronous).
+    Returns voice_id if successful, None if timeout (caller should use backup voice).
     
     Args:
         name: Name for the cloned voice
         reference_audio_path: Path to reference audio file
         elevenlabs_api_key: ElevenLabs API key
         description: Description for the voice
-        max_retries: Maximum retries to wait for voice readiness
-        retry_delay: Delay between retries in seconds
+        timeout: Timeout for synchronous voice creation in seconds (default: 90)
+                 Sufficient for up to 2-minute reference audio files
     
     Returns:
-        voice_id of the created voice
+        voice_id of the created voice, or None if timeout/failure
     """
+    logger.info(f"Creating voice clone: {name}")
+    logger.info(f"Reference audio: {reference_audio_path}")
+    logger.info(f"Synchronous creation with {timeout}s timeout...")
+    
     try:
         url = "https://api.elevenlabs.io/v1/voices/add"
         
@@ -179,11 +220,12 @@ def create_voice_clone_elevenlabs(
         # Infer MIME type from file
         mime_type, _ = mimetypes.guess_type(reference_audio_path)
         if not mime_type or not mime_type.startswith('audio/'):
-            mime_type = "audio/mpeg"  # fallback
+            mime_type = "audio/mpeg"
         
+        logger.debug(f"Detected MIME type: {mime_type}")
         filename = os.path.basename(reference_audio_path)
         
-        # Prepare multipart form data as list (supports multiple samples)
+        # Upload with extended timeout to allow processing
         with open(reference_audio_path, "rb") as audio_file:
             files = [
                 ("files", (filename, audio_file, mime_type))
@@ -194,40 +236,60 @@ def create_voice_clone_elevenlabs(
                 "description": description
             }
             
+            logger.debug(f"Uploading audio for voice cloning...")
             response = requests.post(
                 url, 
                 headers=headers, 
                 files=files, 
                 data=data,
-                timeout=30
+                timeout=timeout
             )
         
-        # Accept both 200 and 201 status codes
+        # Check response
         if response.status_code not in [200, 201]:
-            raise RuntimeError(
-                f"ElevenLabs voice creation error: {response.status_code} - {response.text}"
-            )
+            logger.error(f"Voice creation failed: {response.status_code} - {response.text}")
+            logger.warning("Will use backup default voice")
+            return None
         
         response_data = response.json()
         voice_id = response_data.get("voice_id")
         
         if not voice_id:
-            raise RuntimeError("No voice_id returned from ElevenLabs API")
+            logger.error("No voice_id returned from ElevenLabs API")
+            logger.warning("Will use backup default voice")
+            return None
         
-        # Poll for voice readiness
-        for attempt in range(max_retries):
-            if _check_voice_ready(voice_id, elevenlabs_api_key):
-                return voice_id
+        logger.info(f"Voice clone created with ID: {voice_id}")
+        
+        # Brief wait then verify voice is ready
+        logger.debug("Verifying voice readiness...")
+        time.sleep(1)
+        
+        if _check_voice_ready(voice_id, elevenlabs_api_key):
+            logger.info(f"✓ Voice clone ready and verified: {voice_id}")
+            return voice_id
+        else:
+            logger.warning("Voice created but readiness check failed")
+            logger.info("Giving it one more moment...")
+            time.sleep(3)
             
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-        
-        # Voice created but may not be fully ready; proceed anyway
-        print(f"Warning: Voice {voice_id} may not be fully ready after {max_retries} retries")
-        return voice_id
+            if _check_voice_ready(voice_id, elevenlabs_api_key):
+                logger.info(f"✓ Voice clone ready after additional wait: {voice_id}")
+                return voice_id
+            else:
+                logger.warning(f"Voice {voice_id} not ready after verification attempts")
+                logger.warning("Will use backup default voice")
+                return None
+    
+    except requests.exceptions.Timeout:
+        logger.warning(f"Voice creation timed out after {timeout}s")
+        logger.info("Will use backup default voice instead")
+        return None
     
     except Exception as e:
-        raise RuntimeError(f"Error creating voice clone: {str(e)}") from e
+        logger.error(f"Error creating voice clone: {str(e)}")
+        logger.warning("Will use backup default voice")
+        return None
 
 
 def _check_voice_ready(voice_id: str, elevenlabs_api_key: str) -> bool:
@@ -251,12 +313,76 @@ def _check_voice_ready(voice_id: str, elevenlabs_api_key: str) -> bool:
         response = requests.get(url, headers=headers, timeout=10)
         
         if response.status_code == 200:
-            return True
+            # Voice exists and is accessible
+            voice_data = response.json()
+            
+            # Check if voice has any samples (indicates it's fully processed)
+            samples = voice_data.get("samples", [])
+            if samples:
+                logger.debug(f"Voice has {len(samples)} sample(s), voice is ready")
+                return True
+            else:
+                logger.debug("Voice exists but no samples yet, still processing...")
+                return False
         
+        logger.debug(f"Voice check returned status {response.status_code}")
         return False
     
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Error checking voice readiness: {str(e)}")
         return False
+
+
+def _get_default_voice(elevenlabs_api_key: str) -> str:
+    """
+    Get a default voice ID from ElevenLabs available voices.
+    
+    Args:
+        elevenlabs_api_key: ElevenLabs API key
+    
+    Returns:
+        Voice ID string
+    """
+    logger.info("Fetching available voices from ElevenLabs...")
+    
+    try:
+        url = "https://api.elevenlabs.io/v1/voices"
+        
+        headers = {
+            "xi-api-key": elevenlabs_api_key
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            voices = response.json().get("voices", [])
+            logger.info(f"Found {len(voices)} available voices")
+            
+            # Try to find a multilingual voice
+            for voice in voices:
+                labels = voice.get("labels", {})
+                voice_name = voice.get("name", "Unknown")
+                # Look for multilingual voices
+                if "multilingual" in str(labels).lower():
+                    voice_id = voice.get("voice_id")
+                    logger.info(f"Selected multilingual voice: {voice_name} (ID: {voice_id})")
+                    return voice_id
+            
+            # If no multilingual, return the first available voice
+            if voices:
+                voice_id = voices[0].get("voice_id")
+                voice_name = voices[0].get("name", "Unknown")
+                logger.info(f"No multilingual voice found, using first available: {voice_name} (ID: {voice_id})")
+                return voice_id
+        
+        # Fallback to a commonly available voice ID
+        logger.warning("Could not fetch voices from API, using fallback voice ID (Adam)")
+        return "pNInz6obpgDQGcFmaJgB"
+    
+    except Exception as e:
+        # If all else fails, use Adam's voice ID as fallback
+        logger.error(f"Error fetching voices: {str(e)}, using fallback voice ID")
+        return "pNInz6obpgDQGcFmaJgB"
 
 
 def delete_voice_elevenlabs(voice_id: str, elevenlabs_api_key: str) -> None:
@@ -316,6 +442,10 @@ def text_to_speech_elevenlabs(
     Returns:
         Tuple of (audio_file_path, cloned_voice_id or None)
     """
+    logger.info("Starting text-to-speech conversion with ElevenLabs")
+    logger.info(f"Text length: {len(text)} characters")
+    logger.info(f"Model: {model_id}, Format: {output_format}")
+    
     created_voice_id = None
     
     try:
@@ -325,9 +455,11 @@ def text_to_speech_elevenlabs(
             unique_id = uuid.uuid4().hex[:8]
             extension = "mp3" if output_format.startswith("mp3") else "pcm"
             output_audio_path = os.path.join(temp_dir, f"tts_{unique_id}.{extension}")
+            logger.debug(f"No output path provided, using: {output_audio_path}")
         
         # If voice cloning is requested with reference audio
         if reference_audio_path and not voice_id:
+            logger.info("Voice cloning requested with reference audio")
             # Create a voice clone (will be reusable)
             voice_name = f"clone_{uuid.uuid4().hex[:8]}"
             created_voice_id = create_voice_clone_elevenlabs(
@@ -336,12 +468,21 @@ def text_to_speech_elevenlabs(
                 elevenlabs_api_key=elevenlabs_api_key,
                 description="Voice clone for video translation"
             )
-            voice_id = created_voice_id
+            
+            if created_voice_id:
+                voice_id = created_voice_id
+                logger.info("Using cloned voice for TTS")
+            else:
+                logger.warning("Voice cloning failed, falling back to default voice")
+                # voice_id remains None, will get default voice below
         
         # Use standard TTS with voice_id
         if not voice_id:
-            # Use a default multilingual voice
-            voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel - good for multiple languages
+            logger.info("No voice_id provided, getting default voice...")
+            # Get a default multilingual voice from available voices
+            voice_id = _get_default_voice(elevenlabs_api_key)
+        else:
+            logger.info(f"Using provided voice_id: {voice_id}")
         
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         
@@ -362,6 +503,9 @@ def text_to_speech_elevenlabs(
             "output_format": output_format
         }
         
+        logger.info("Sending TTS request to ElevenLabs...")
+        logger.debug(f"Settings - Stability: {stability}, Similarity: {similarity_boost}, Speaker boost: {use_speaker_boost}")
+        
         response = requests.post(
             url, 
             headers=headers, 
@@ -372,20 +516,30 @@ def text_to_speech_elevenlabs(
         
         # Check response
         if response.status_code != 200:
+            logger.error(f"TTS API error: {response.status_code} - {response.text}")
             raise RuntimeError(
                 f"ElevenLabs TTS API error: {response.status_code} - {response.text}"
             )
         
+        logger.info("Streaming audio response to file...")
         # Stream audio to file
+        bytes_written = 0
         with open(output_audio_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
+                    bytes_written += len(chunk)
+        
+        logger.info(f"Audio saved successfully ({bytes_written} bytes): {output_audio_path}")
         
         # Cleanup cloned voice if explicitly requested (NOT recommended)
         if created_voice_id and cleanup_cloned_voice:
+            logger.info(f"Cleaning up cloned voice: {created_voice_id}")
             delete_voice_elevenlabs(created_voice_id, elevenlabs_api_key)
             return output_audio_path, None
+        
+        if created_voice_id:
+            logger.info(f"Voice clone {created_voice_id} will be kept for reuse")
         
         return output_audio_path, created_voice_id
     
@@ -407,10 +561,13 @@ def get_media_duration(file_path: str) -> float:
         Duration in seconds
     """
     try:
+        logger.debug(f"Probing media duration: {file_path}")
         probe = ffmpeg.probe(file_path)
         duration = float(probe['format']['duration'])
+        logger.debug(f"Media duration: {duration:.2f} seconds")
         return duration
     except Exception as e:
+        logger.error(f"Error probing media duration: {str(e)}")
         raise RuntimeError(f"Error getting duration for {file_path}: {str(e)}") from e
 
 
@@ -431,11 +588,15 @@ def adjust_audio_duration(
     Returns:
         Path to adjusted audio file
     """
+    logger.info(f"Adjusting audio duration to match target: {target_duration:.2f}s")
+    
     try:
         current_duration = get_media_duration(audio_path)
+        duration_diff = current_duration - target_duration
         
         # If durations match within 0.1 seconds, no adjustment needed
-        if abs(current_duration - target_duration) < 0.1:
+        if abs(duration_diff) < 0.1:
+            logger.info("Audio duration matches target (within 0.1s), no adjustment needed")
             return audio_path
         
         if output_path is None:
@@ -445,19 +606,23 @@ def adjust_audio_duration(
         if current_duration < target_duration:
             # Audio is shorter - pad with silence at the end
             silence_duration = target_duration - current_duration
+            logger.info(f"Audio is {silence_duration:.2f}s shorter, padding with silence")
             stream = ffmpeg.input(audio_path)
             stream = ffmpeg.filter(stream, 'apad', pad_dur=silence_duration)
             stream = ffmpeg.output(stream, output_path, acodec='libmp3lame', audio_bitrate='192k')
             ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
         else:
             # Audio is longer - trim to target duration
+            logger.info(f"Audio is {abs(duration_diff):.2f}s longer, trimming to match")
             stream = ffmpeg.input(audio_path, t=target_duration)
             stream = ffmpeg.output(stream, output_path, acodec='libmp3lame', audio_bitrate='192k')
             ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
         
+        logger.info(f"Audio adjustment completed: {output_path}")
         return output_path
     
     except Exception as e:
+        logger.error(f"Error adjusting audio duration: {str(e)}")
         raise RuntimeError(f"Error adjusting audio duration: {str(e)}") from e
 
 
@@ -483,26 +648,35 @@ def replace_audio_in_video(
     Returns:
         Path to output video with replaced audio
     """
+    logger.info("Starting video dubbing (audio replacement)")
+    logger.info(f"Video: {video_path}")
+    logger.info(f"New audio: {new_audio_path}")
+    logger.info(f"Audio codec: {audio_codec}, bitrate: {audio_bitrate}")
+    
     adjusted_audio_path = None
     
     try:
         if output_video_path is None:
             temp_dir = tempfile.gettempdir()
             output_video_path = os.path.join(temp_dir, f"dubbed_{uuid.uuid4().hex[:8]}.mp4")
+            logger.debug(f"No output path provided, using: {output_video_path}")
         
         # Adjust audio duration if requested
         audio_to_use = new_audio_path
         if adjust_duration:
+            logger.info("Duration adjustment enabled")
             video_duration = get_media_duration(video_path)
             audio_to_use = adjust_audio_duration(new_audio_path, video_duration)
             if audio_to_use != new_audio_path:
                 adjusted_audio_path = audio_to_use
+                logger.info("Using adjusted audio for dubbing")
+        else:
+            logger.info("Duration adjustment disabled, using original audio")
         
         # Replace audio in video using FFmpeg
-        # -map 0:v:0 = take video stream from input 0 (original video)
-        # -map 1:a:0 = take audio stream from input 1 (new audio)
-        # -c:v copy = copy video codec (no re-encoding)
-        # -c:a aac = encode audio as AAC
+        logger.info("Running FFmpeg to replace audio track...")
+        logger.debug("FFmpeg operation: copy video stream, encode new audio stream")
+        
         video_input = ffmpeg.input(video_path)
         audio_input = ffmpeg.input(audio_to_use)
         
@@ -518,8 +692,11 @@ def replace_audio_in_video(
         
         ffmpeg.run(output, overwrite_output=True, capture_stdout=True, capture_stderr=True)
         
+        logger.info(f"Video dubbing completed successfully: {output_video_path}")
+        
         # Cleanup adjusted audio if it was created
         if adjusted_audio_path and adjusted_audio_path != new_audio_path:
+            logger.debug(f"Cleaning up temporary adjusted audio: {adjusted_audio_path}")
             cleanup_temp_files(adjusted_audio_path)
         
         return output_video_path

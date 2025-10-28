@@ -41,7 +41,9 @@ async def root():
             "/transcribe": "POST - Extract audio from video and transcribe using Whisper API",
             "/translate": "POST - Translate text from English to German using GPT",
             "/tts": "POST - Convert German text to speech with voice cloning using ElevenLabs",
-            "/dub": "POST - Replace audio track in video with new audio (video dubbing)"
+            "/dub": "POST - Replace audio track in video with new audio (video dubbing)",
+            "/voices": "GET - List available ElevenLabs voices",
+            "/health": "GET - Health check"
         }
     }
 
@@ -514,6 +516,65 @@ async def dub_video(
                 os.rmdir(temp_dir)
         except Exception:
             pass
+
+
+@app.get("/voices")
+async def list_voices():
+    """
+    List available ElevenLabs voices in your account.
+    
+    Returns:
+        JSON response with list of available voices
+    """
+    import requests
+    
+    if not ELEVENLABS_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="ELEVENLABS_API_KEY not found in environment variables"
+        )
+    
+    try:
+        url = "https://api.elevenlabs.io/v1/voices"
+        
+        headers = {
+            "xi-api-key": ELEVENLABS_API_KEY
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"ElevenLabs API error: {response.text}"
+            )
+        
+        voices_data = response.json()
+        voices = voices_data.get("voices", [])
+        
+        # Format the response
+        formatted_voices = []
+        for voice in voices:
+            formatted_voices.append({
+                "voice_id": voice.get("voice_id"),
+                "name": voice.get("name"),
+                "category": voice.get("category"),
+                "labels": voice.get("labels", {}),
+                "description": voice.get("description", ""),
+                "preview_url": voice.get("preview_url", "")
+            })
+        
+        return JSONResponse(content={
+            "status": "success",
+            "count": len(formatted_voices),
+            "voices": formatted_voices
+        })
+    
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching voices: {str(e)}"
+        )
 
 
 @app.get("/health")
