@@ -13,7 +13,7 @@
     "end_ms": 12319,
     "duration_s": 7.319,
     "english_text": "Here in the heart of East Africa the Great Serengeti National Park hosts one of nature's greatest spectacles the Great Migration",
-    "german_text": "Hier im Herzen Ostafrikas beherbergt der große Serengeti-Nationalpark eines der größten Naturschauspiele: die große Migration."
+    "german_text": "Hier im Herzen Ostafrikas beherbergt der Serengeti-Nationalpark eines der größten Naturschauspiele: die Große Migration."
   },
   {
     "segment_id": 3,
@@ -21,7 +21,7 @@
     "end_ms": 21840,
     "duration_s": 8.101,
     "english_text": "Over a million wildebeest zebras and gazelles travel vast distances in search of fresh grass braving rivers filled with crocodiles",
-    "german_text": "Über eine Million Gnus, Zebras und Gazellen legen weite Strecken zurück auf der Suche nach frischem Gras und überwinden Flüsse voller Krokodile."
+    "german_text": "Über eine Million Gnus, Zebras und Gazellen legen weite Strecken zurück, um frisches Gras zu finden und durchqueren dabei Flüsse voller Krokodile."
   },
   {
     "segment_id": 4,
@@ -29,15 +29,15 @@
     "end_ms": 24600,
     "duration_s": 1.961,
     "english_text": "But predators are never far behind",
-    "german_text": "Aber Räuber sind nie weit entfernt."
+    "german_text": "Aber Raubtiere sind nie weit entfernt."
   },
   {
     "segment_id": 5,
     "start_ms": 24600,
-    "end_ms": 30059,
-    "duration_s": 5.459,
+    "end_ms": 29780,
+    "duration_s": 5.18,
     "english_text": "And lions the kings of the savannah stalk their prey with patience and precision",
-    "german_text": "Und Löwen, die Könige der Savanne, schleichen mit Geduld und Präzision ihrer Beute nach."
+    "german_text": "Und Löwen, die Könige der Savanne, schleichen geduldig und präzise an ihre Beute heran."
   },
   {
     "segment_id": 6,
@@ -45,7 +45,7 @@
     "end_ms": 35419,
     "duration_s": 4.719,
     "english_text": "Cheetahs the fastest land animals chase down their targets in a thrilling display of speed",
-    "german_text": "Geparden, die schnellsten Landtiere, jagen ihre Ziele in einem aufregenden Geschwindigkeitsrausch."
+    "german_text": "Geparden, die schnellsten Landtiere, jagen ihre Ziele in einer aufregenden Demonstration von Geschwindigkeit."
   },
   {
     "segment_id": 7,
@@ -65,17 +65,17 @@
   },
   {
     "segment_id": 9,
-    "start_ms": 45580,
+    "start_ms": 45560,
     "end_ms": 51659,
-    "duration_s": 6.079,
+    "duration_s": 6.099,
     "english_text": "And in the ancient Ngorongoro crater the endangered black rhino finds refuge a rare sight in the wild",
-    "german_text": "Und im alten Ngorongoro-Krater findet das gefährdete schwarze Nashorn Zuflucht – ein seltener Anblick in der Wildnis."
+    "german_text": "Im alten Ngorongoro-Krater findet das bedrohte schwarze Nashorn Zuflucht – ein seltener Anblick in der Wildnis."
   },
   {
     "segment_id": 10,
-    "start_ms": 52900,
+    "start_ms": 52880,
     "end_ms": 59680,
-    "duration_s": 6.78,
+    "duration_s": 6.8,
     "english_text": "Tanzania's wildlife is a treasure like no other a delicate balance of nature that reminds us of the beauty and power of the wild",
     "german_text": "Tansanias Tierwelt ist ein einzigartiger Schatz, ein empfindliches Gleichgewicht der Natur, das uns an die Schönheit und Kraft der Wildnis erinnert."
   }

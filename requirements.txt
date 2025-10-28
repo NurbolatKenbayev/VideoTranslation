@@ -6,4 +6,4 @@ openai==1.91.0
 ffmpeg-python==0.2.0
 requests==2.32.4
 pydub==0.25.1
-
+tqdm==4.67.1
